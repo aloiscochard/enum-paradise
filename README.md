@@ -4,11 +4,11 @@ Scala enumeration implementation using type macros provided by [Macro Paradise](
 
 ## Usage
 
-    object Days extends Enum('Monday, 'Tuesday, 'Wednesday, 'Thursday, 'Friday)
+Enumeration:
 
-    type X = Days.Value
+    object Days extends Enum(Monday, Tuesday, Wednesday, Thursday, Friday)
 
-    def xs: Seq[Days.Value] = Days.values
+    implicitly[Days.Monday.type <:< Days.Value]
 
     import Days._
     def f(x: Value) = x match {
@@ -16,11 +16,43 @@ Scala enumeration implementation using type macros provided by [Macro Paradise](
       case Tuesday => 
       case Wednesday => 
       case Thursday => 
-      case Friday => 
+      //case Friday => 
     }
+    //[warn] /core/src/main/scala/enum.scala:10: match may not be exhaustive.
+    //[warn] It would fail on the following input: Friday
 
-    def f(x: Enumerable) = x.values
-    f(Days)
+Enumeration with specific names:
+
+    object Months extends Enum(
+      January("Jan"),
+      February("Feb"),
+      Mars("Mar"),
+      April("Apr"),
+      May,
+      June("Jun"),
+      July("Jul"),
+      August("Aug"),
+      September("Sep"),
+      October("Oct"),
+      November("Nov"),
+      December("Dec")
+    )
+
+    def code = Months.values.map(_.name.toUpperCase)
+
+    //scala> scalax.MonthsDemo.code
+    //res1: Seq[String] = List(JAN, FEB, MAR, APR, MAY, JUN, JUL, AUG, SEP, OCT, NOV, DEC)
+
+Enumeration with specific value type:
+
+    sealed trait Planet extends Value
+
+    object Planets extends EnumOf[Planet](
+      Mercury,
+      Venus
+    )
+
+    implicitly[Planets.Value =:= Planet]
 
 ## License
 
