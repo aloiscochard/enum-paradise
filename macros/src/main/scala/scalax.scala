@@ -15,6 +15,8 @@ package object scalax {
   type Enum(values: _*) = macro Macros.enum
   type EnumOf[T <: Value](values: _*) = macro Macros.enumOf[T]
 
+  case class EnumDef(id: String, name: String)
+
   object Macros {
     // TODO Factorize common macros code
 
@@ -22,12 +24,15 @@ package object scalax {
       import c.universe._
       import Flag._
 
-      val names = values.map(_.toString)
+      val enumDefs = values.toList.collect {
+        case Ident(TermName(id)) => EnumDef(id, id)
+        case Apply(Ident(TermName(id)), List(Literal(Constant(name)))) => EnumDef(id, name.toString)
+      }
 
-      val valueObjects = names.toList.map { name =>
+      val valueObjects = enumDefs.map { enumDef =>
         ModuleDef(
           Modifiers(),
-          TermName(name),
+          TermName(enumDef.id),
           Template(
             List(Select(This(TypeName(c.enclosingImpl.name.toString)), TypeName("Val"))),
             emptyValDef,
@@ -40,7 +45,7 @@ package object scalax {
                 TypeTree(), 
                 Block(List(Apply(Select(Super(This(tpnme.EMPTY), tpnme.EMPTY), nme.CONSTRUCTOR), List())), Literal(Constant(())))
               ), 
-              DefDef(Modifiers(), TermName("name"), List(), List(), TypeTree(), Literal(Constant(name)))
+              DefDef(Modifiers(), TermName("name"), List(), List(), TypeTree(), Literal(Constant(enumDef.name)))
             )
           )
         )
@@ -55,7 +60,7 @@ package object scalax {
             Select(Select(Select(Ident(TermName("scala")), TermName("collection")), TermName("immutable")), TermName("List")),
             TermName("apply")
           ), 
-          names.map(name => Ident(TermName(name))).toList
+          enumDefs.map(enumDef => Ident(TermName(enumDef.id))).toList
         )
       )
 

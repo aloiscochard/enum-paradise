@@ -18,7 +18,6 @@ object PlanetsDemo {
   }
 }
 
-
 /*
 sealed trait Planet extends Value {
   def mass: Double
