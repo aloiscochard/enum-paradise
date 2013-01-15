@@ -12,14 +12,17 @@ package object scalax {
     override def toString: String = name
   }
 
-  type Enum(symbol: Symbol*) = macro Macros.enum
+  type Enum(values: _*) = macro Macros.enum
+  type EnumOf[T <: Value](values: _*) = macro Macros.enumOf[T]
 
   object Macros {
-    def enum(c: Context)(symbol: c.Expr[Symbol]*): c.Tree = {
+    // TODO Factorize common macros code
+
+    def enum(c: Context)(values: c.Tree*): c.Tree = {
       import c.universe._
       import Flag._
 
-      val names = symbol.map { case Expr(Apply((_, Literal(Constant(x: String)) :: Nil))) => x }
+      val names = values.map(_.toString)
 
       val valueObjects = names.toList.map { name =>
         ModuleDef(
@@ -68,22 +71,67 @@ package object scalax {
       val Expr(Block(List(ClassDef(_, _, _, Template(parents, self, body))), _)) = reify {
         class CONTAINER extends Enumerable
       }
-
-      /*
-      println(showRaw(reify {
-        class CONTAINER extends Enumerable {
-          sealed trait Value extends scalax.Value
-          override type T = Value
-        }
-      }))
-      */
-
      
-      // TODO Support existing code (need to remove constructor of body for that...)
-      val Template(_, _, existingCode) = c.enclosingTemplate
-      Template(parents, emptyValDef, /*existingCode ++*/ body ++ generatedCode)
+      val Template(_, _, _ :: existingCode) = c.enclosingTemplate
+      Template(parents, emptyValDef, body ++ generatedCode ++ existingCode)
     }
 
-    //type Enum[T <: Value](symbol: Symbol*) = macro enum[T]
+
+    def enumOf[T : c.WeakTypeTag](c: Context)(values: c.Tree*): c.Tree = {
+      import c.universe._
+      import Flag._
+
+      implicit val context = c
+
+      val tpe = c.weakTypeOf[T]
+      val names = values.map(_.toString)
+
+      val valueObjects = names.toList.map { name =>
+        ModuleDef(
+          Modifiers(),
+          TermName(name),
+          Template(
+            List(Ident(tpe.typeSymbol)),
+            emptyValDef,
+            List(
+              DefDef(
+                Modifiers(), 
+                nme.CONSTRUCTOR, 
+                List(), 
+                List(List()), 
+                TypeTree(), 
+                Block(List(Apply(Select(Super(This(tpnme.EMPTY), tpnme.EMPTY), nme.CONSTRUCTOR), List())), Literal(Constant(())))
+              ), 
+              DefDef(Modifiers(), TermName("name"), List(), List(), TypeTree(), Literal(Constant(name)))
+            )
+          )
+        )
+      }
+
+      val valuesList = ValDef(
+        Modifiers(),
+        TermName("values"),
+        AppliedTypeTree(Ident(TypeName("Seq")), List(TypeTree(tpe))),
+        Apply(
+          Select(
+            Select(Select(Select(Ident(TermName("scala")), TermName("collection")), TermName("immutable")), TermName("List")),
+            TermName("apply")
+          ), 
+          names.map(name => Ident(TermName(name))).toList
+        )
+      )
+
+      val valueType = TypeDef(Modifiers(OVERRIDE), TypeName("Value"), List(), Ident(tpe.typeSymbol))
+
+      val generatedCode = valueType :: valuesList :: valueObjects
+
+      val Expr(Block(List(ClassDef(_, _, _, Template(parents, self, body))), _)) = reify {
+        class CONTAINER extends Enumerable
+      }
+     
+      val Template(_, _, _ :: existingCode) = c.enclosingTemplate
+      Template(parents, emptyValDef, body ++ generatedCode ++ existingCode)
+    }
+
   }
 }
