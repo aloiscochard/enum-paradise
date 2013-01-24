@@ -1,6 +1,8 @@
 import language.experimental.macros
 import scala.reflect.macros.Context
 
+// TODO Error handling (i.e. when parsing fail)
+
 package object scalax {
   trait Enumerable { 
     type Value <: scalax.Value
@@ -14,6 +16,8 @@ package object scalax {
 
   type Enum(values: _*) = macro Macros.enum
   type EnumOf[T <: Value](values: _*) = macro Macros.enumOf[T]
+
+  type TypeEnum[TC[_]](instances: _*) = macro Macros.typeEnum[TC]
 
   case class EnumDef(id: String, name: String)
 
@@ -35,9 +39,6 @@ package object scalax {
       template(c)(valueSealedTrait :: valueType :: valuesList(c)(valueTypeTree, enumDefs) :: valueObjects(c)(valueTypeTree, enumDefs))
     }
 
-
-    abstract class Foo(x: Int)
-
     def enumOf[T : c.WeakTypeTag](c: Context)(values: c.Tree*): c.Tree = {
       import c.universe._
       import Flag._
@@ -57,6 +58,48 @@ package object scalax {
       template(c)(valueType :: valuesList(c)(valueTypeTree, enumDefs) :: valueObjects(c)(valueTypeTree, enumDefs))
     }
 
+    def typeEnum[TC[_]](c: Context)(instances: c.Tree*)(implicit tag: c.WeakTypeTag[TC[_]]) = {//: c.Tree = {
+      import c.universe._
+      import Flag._
+
+      val tpe = c.weakTypeOf[TC[_]]
+
+      val generatedCode = instances.collect {
+        // TODO Support package prefix for types
+        case Apply(Ident(TermName(typeName)), List(Block(Tuple2(defs, _)))) => typeName -> defs
+      } map {
+        case (typeName, defs) =>
+          ModuleDef(
+            Modifiers(IMPLICIT), 
+            TermName(tpe.typeSymbol.name + typeName), 
+            Template(
+              List(AppliedTypeTree(Ident(tpe.typeSymbol), List(Ident(TypeName(typeName))))), 
+              emptyValDef, 
+              List(
+                DefDef(
+                  Modifiers(), 
+                  nme.CONSTRUCTOR, 
+                  List(), 
+                  List(List()), 
+                  TypeTree(), 
+                  Block(
+                    List(Apply(Select(Super(This(tpnme.EMPTY), tpnme.EMPTY), nme.CONSTRUCTOR), List())), 
+                    Literal(Constant(()))
+                  )
+                )
+              ) ++ defs
+            )
+          )
+      }
+
+      val Expr(Block(List(ClassDef(_, _, _, Template(parents, _, body))), _)) = reify {
+        class CONTAINER
+      }
+     
+      val Template(_, _, _ :: existingCode) = c.enclosingTemplate
+      Template(parents, emptyValDef, body ++ generatedCode ++ existingCode)
+    }
+
     private def parseValues(c: Context)(xs: List[c.Tree]): List[(EnumDef, List[c.Tree])] = {
       import c.universe._
       xs.collect {
@@ -69,7 +112,7 @@ package object scalax {
     private def template(c: Context)(generatedCode: List[c.Tree]) = {
       import c.universe._
 
-      val Expr(Block(List(ClassDef(_, _, _, Template(parents, self, body))), _)) = reify {
+      val Expr(Block(List(ClassDef(_, _, _, Template(parents, _, body))), _)) = reify {
         class CONTAINER extends Enumerable
       }
      

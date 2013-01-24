@@ -65,6 +65,23 @@ Enumeration with specific value type:
     //scala> Planets.values.sortBy(_.mass)
     //res0: Seq[scalax.Planet] = List(Mercury, Mars, Venus, Earth, Uranus, Neptune, Saturn, Jupiter)
 
+Type Enumeration:
+
+    trait Serializable[T] { def serialize(x: T): String }
+
+    object Serializable extends TypeEnum[Serializable](
+      Int { def serialize(x: Int) = x.toString },
+      Double { def serialize(x: Double) = x.toString }
+    )
+
+    def serialize[T : Serializable](x: T) = implicitly[Serializable[T]].serialize(x)
+
+    //scala> serialize(42)
+    //res0: String = 42
+
+    //scala> serialize(math.Pi)
+    //res1: String = 3.141592653589793
+
 ## License
 
     This software is licensed under the Apache 2 license, quoted below.
