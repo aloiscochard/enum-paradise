@@ -36,6 +36,8 @@ package object scalax {
     }
 
 
+    abstract class Foo(x: Int)
+
     def enumOf[T : c.WeakTypeTag](c: Context)(values: c.Tree*): c.Tree = {
       import c.universe._
       import Flag._
@@ -55,11 +57,12 @@ package object scalax {
       template(c)(valueType :: valuesList(c)(valueTypeTree, enumDefs) :: valueObjects(c)(valueTypeTree, enumDefs))
     }
 
-    private def parseValues(c: Context)(xs: List[c.Tree]): List[EnumDef] = {
+    private def parseValues(c: Context)(xs: List[c.Tree]): List[(EnumDef, List[c.Tree])] = {
       import c.universe._
       xs.collect {
-        case Ident(TermName(id)) => EnumDef(id, id)
-        case Apply(Ident(TermName(id)), List(Literal(Constant(name)))) => EnumDef(id, name.toString)
+        case Ident(TermName(id)) => EnumDef(id, id) -> Nil
+        case Apply(Ident(TermName(id)), List(Literal(Constant(name)))) => EnumDef(id, name.toString) -> Nil
+        case Apply(Ident(TermName(id)), args) => EnumDef(id, id) -> args
       }
     }
 
@@ -74,30 +77,39 @@ package object scalax {
       Template(parents, emptyValDef, body ++ generatedCode ++ existingCode)
     }
 
-    private def valueObjects(c: Context)(typeTree: c.Tree, enumDefs: List[EnumDef]): List[c.Tree] = enumDefs.map { enumDef =>
-      import c.universe._
-      ModuleDef(
-        Modifiers(),
-        TermName(enumDef.id),
-        Template(
-          List(typeTree),
-          emptyValDef,
-          List(
-            DefDef(
-              Modifiers(), 
-              nme.CONSTRUCTOR, 
-              List(), 
-              List(List()), 
-              TypeTree(), 
-              Block(List(Apply(Select(Super(This(tpnme.EMPTY), tpnme.EMPTY), nme.CONSTRUCTOR), List())), Literal(Constant(())))
-            ), 
-            DefDef(Modifiers(), TermName("name"), List(), List(), TypeTree(), Literal(Constant(enumDef.name)))
+    private def valueObjects(c: Context)(typeTree: c.Tree, enumDefs: List[(EnumDef, List[c.Tree])]): List[c.Tree] = enumDefs.map { 
+      case (enumDef, args) =>
+        import c.universe._
+        ModuleDef(
+          Modifiers(),
+          TermName(enumDef.id),
+          Template(
+            List(typeTree),
+            emptyValDef,
+            List(
+              DefDef(
+                Modifiers(), 
+                nme.CONSTRUCTOR, 
+                List(), 
+                List(List()), 
+                TypeTree(), 
+                Block(
+                  List(
+                    Apply(
+                      Select(Super(This(tpnme.EMPTY), tpnme.EMPTY), nme.CONSTRUCTOR),
+                      args
+                    )
+                  ), 
+                  Literal(Constant(()))
+                )
+              ), 
+              DefDef(Modifiers(), TermName("name"), List(), List(), TypeTree(), Literal(Constant(enumDef.name)))
+            )
           )
         )
-      )
     }
 
-    private def valuesList(c: Context)(typeTree: c.Tree, enumDefs: List[EnumDef]): c.Tree = {
+    private def valuesList(c: Context)(typeTree: c.Tree, enumDefs: List[(EnumDef, List[c.Tree])]): c.Tree = {
       import c.universe._
       ValDef(
         Modifiers(),
@@ -108,7 +120,7 @@ package object scalax {
             Select(Select(Select(Ident(TermName("scala")), TermName("collection")), TermName("immutable")), TermName("List")),
             TermName("apply")
           ), 
-          enumDefs.map(enumDef => Ident(TermName(enumDef.id))).toList
+          enumDefs.map(_._1).map(enumDef => Ident(TermName(enumDef.id))).toList
         )
       )
     }
